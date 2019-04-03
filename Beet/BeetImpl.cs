@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,17 +11,17 @@ namespace Beet
 {
 	public class BeetImpl
 	{
-		Dictionary<byte[], byte[]> _dataA = new Dictionary<byte[], byte[]>(QuickHashArrayComparer.Instance);
+		ConcurrentDictionary<byte[], byte[]> _data = new ConcurrentDictionary<byte[], byte[]>(QuickHashArrayComparer.Instance);
 
 		public byte[] Get(byte[] key)
 		{
-			_dataA.TryGetValue(key, out var val);
+			_data.TryGetValue(key, out var val);
 			return val;
 		}
 
 		public void Set(byte[] key, byte[] val)
 		{
-			_dataA[key] = val;
+			_data[key] = val;
 		}
 
 	}
@@ -38,7 +39,7 @@ namespace Beet
 			_leaveOpen = leaveOpen;
 		}
 
-		UTF8Encoding _encoding = new UTF8Encoding(false, false);
+		readonly UTF8Encoding _encoding = new UTF8Encoding(false, false);
 
 		public async Task Serve()
 		{
@@ -55,31 +56,33 @@ namespace Beet
 							switch (cmd)
 							{
 								case 1: // set
-									{
-										var keyLen = br.ReadByte();
-										var key = new byte[keyLen];
-										br.Read(key, 0, keyLen);
-										var valLen = br.ReadByte();
-										var val = new byte[valLen];
-										br.Read(val, 0, valLen);
-										_engine.Set(key, val);
-										bw.Write((byte)1); // success
-										break;
-									}
+								{
+									var keyLen = br.ReadByte();
+									var key = new byte[keyLen];
+									br.Read(key, 0, keyLen);
+									var valLen = br.ReadByte();
+									var val = new byte[valLen];
+									br.Read(val, 0, valLen);
+									_engine.Set(key, val);
+									bw.Write((byte)1); // success
+									break;
+								}
 								case 2: // get
-									{
-										var keyLen = br.ReadByte();
-										var key = new byte[keyLen];
-										br.Read(key, 0, keyLen);
-										var val = _engine.Get(key);
-										bw.Write(checked((byte)val.Length));
-										bw.Write(val);
-										break;
-									}
+								{
+									var keyLen = br.ReadByte();
+									var key = new byte[keyLen];
+									br.Read(key, 0, keyLen);
+									var val = _engine.Get(key);
+									bw.Write(checked((byte)val.Length));
+									bw.Write(val);
+									break;
+								}
 								default:
+								{
 									bw.Write(0); // error
 									bw.Write(1); // unknown command
 									break;
+								}
 							}
 						}
 					}
@@ -127,7 +130,7 @@ namespace Beet
 				throw new ArgumentNullException("key");
 			}
 
-			if (key.Length >= 4)
+			if (key.Length > 4)
 			{
 				// first 2 & last 2 bytes
 				var m = key.Length;
@@ -141,7 +144,7 @@ namespace Beet
 			else
 			{
 				var hash = 0;
-				for (int i = 0; i < key.Length; i++)
+				for (var i = 0; i < key.Length; i++)
 				{
 					hash |= key[i] << (8 * i);
 				}
@@ -159,8 +162,8 @@ namespace Beet
 			{
 				return ReferenceEquals(left, right);
 			}
-			return left.SequenceEqual(right);
-			// return UnSafeEquals(left, right);
+			// return left.SequenceEqual(right);
+			return UnSafeEquals(left, right);
 		}
 
 		[ReliabilityContract(Consistency.WillNotCorruptState, Cer.MayFail)]
