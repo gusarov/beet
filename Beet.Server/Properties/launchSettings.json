@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Beet.Server": {
+      "commandName": "Project",
+      "commandLineArgs": "123"
+    }
+  }
+}
